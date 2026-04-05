@@ -22,8 +22,8 @@
 
   --text-primary:  #e2e8f0;
   --text-secondary:#94a3b8;
-  --text-muted:    #475569;
-  --text-label:    #64748b;
+  --text-muted:    #7b8ea9;
+  --text-label:    #8ea3be;
 
   --border:        rgba(255,255,255,0.07);
   --border-bright: rgba(0,212,200,0.3);
@@ -709,6 +709,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 }
 
 .chart-provenance-badge {
+  display: none;
   margin-bottom: 8px;
   padding: 4px 8px;
   border-radius: 6px;
