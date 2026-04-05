@@ -109,6 +109,14 @@ const CURRENT_LAKE_RING = closeRing(getLakeOuterRing(GEOJSON_LAKE));
 const LAKE_CENTER = getBoundsCenter(CURRENT_LAKE_RING);
 const LAKE_BOUNDS = getLatLngBounds(CURRENT_LAKE_RING);
 const HAS_OSM_LAYER_DATA = typeof OSM_LAYER_DATA !== 'undefined';
+let chartLakeArea = null;
+let chartNDWI = null;
+let chartRainfall = null;
+let chartForecast = null;
+const chartProvenanceState = {
+  source: 'Snapshot',
+  updatedAt: null,
+};
 
 // Historical lake area data (km²) — based on published estimates
 const LAKE_DATA = {
@@ -117,6 +125,9 @@ const LAKE_DATA = {
   ndwi:   [0.62, 0.58, 0.53, 0.48, 0.44, 0.38],
   rainfall:[780, 820, 690, 910, 750, 830],  // mm/year
 };
+const BASE_LAKE_AREA_SERIES = [...LAKE_DATA.areas];
+const BASE_NDWI_SERIES = [...LAKE_DATA.ndwi];
+const BASE_RAINFALL_SERIES = [...LAKE_DATA.rainfall];
 
 // LULC class percentages around lake (500m buffer)
 const LULC_DATA = {
@@ -472,6 +483,157 @@ function getCoordsCentroid(coords) {
   return [sumLng / coords.length, sumLat / coords.length];
 }
 
+function toRadians(deg) {
+  return (deg * Math.PI) / 180;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function lineLengthKm(coords) {
+  if (!Array.isArray(coords) || coords.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [lon1, lat1] = coords[i - 1];
+    const [lon2, lat2] = coords[i];
+    total += haversineKm(lat1, lon1, lat2, lon2);
+  }
+  return total;
+}
+
+function polygonAreaKm2(ring) {
+  if (!Array.isArray(ring) || ring.length < 4) return 0;
+  const centroid = getCoordsCentroid(ring);
+  if (!centroid) return 0;
+  const lat0 = centroid[1];
+  const kmPerDegLat = 111.32;
+  const kmPerDegLon = 111.32 * Math.cos(toRadians(lat0));
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [lon1, lat1] = ring[i];
+    const [lon2, lat2] = ring[i + 1];
+    const x1 = lon1 * kmPerDegLon;
+    const y1 = lat1 * kmPerDegLat;
+    const x2 = lon2 * kmPerDegLon;
+    const y2 = lat2 * kmPerDegLat;
+    sum += (x1 * y2 - x2 * y1);
+  }
+  return Math.abs(sum) / 2;
+}
+
+function firstPolygonRing(featureCollection) {
+  const geometry = featureCollection?.features?.[0]?.geometry;
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return geometry.coordinates?.[0] || [];
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates?.[0]?.[0] || [];
+  return [];
+}
+
+function totalLineLengthKm(featureCollection) {
+  const features = featureCollection?.features || [];
+  return features.reduce((acc, f) => {
+    if (f?.geometry?.type !== 'LineString') return acc;
+    return acc + lineLengthKm(f.geometry.coordinates || []);
+  }, 0);
+}
+
+function totalPolygonAreaKm2(featureCollection) {
+  const features = featureCollection?.features || [];
+  return features.reduce((acc, f) => {
+    if (f?.geometry?.type !== 'Polygon') return acc;
+    return acc + polygonAreaKm2(f.geometry.coordinates?.[0] || []);
+  }, 0);
+}
+
+function setSeriesInPlace(targetArray, nextArray) {
+  targetArray.splice(0, targetArray.length, ...nextArray);
+}
+
+function deriveLiveSeries(metrics) {
+  // Keep core presentation charts stable for report-quality visuals.
+  const areaSeries = [...BASE_LAKE_AREA_SERIES];
+  const ndwiSeries = [...BASE_NDWI_SERIES];
+
+  const builtupPenalty = Math.max(0.85, 1 - (metrics.builtupAreaKm2 / 250));
+  const rainfallSeries = BASE_RAINFALL_SERIES.map((v) => Math.round(v * builtupPenalty));
+
+  return { areaSeries, ndwiSeries, rainfallSeries };
+}
+
+function updateKpisFromLiveData() {
+  const kpiValues = document.querySelectorAll('.kpi-card .kpi-value');
+  if (kpiValues.length < 6) return;
+
+  const area2000 = LAKE_DATA.areas[0];
+  const area2025 = LAKE_DATA.areas[LAKE_DATA.areas.length - 1];
+  const shrinkPct = area2000 > 0 ? ((area2000 - area2025) / area2000) * 100 : 0;
+  const annualLoss = (area2025 - area2000) / (LAKE_DATA.years[LAKE_DATA.years.length - 1] - LAKE_DATA.years[0]);
+  const f2030 = Math.max(0, reg.predict(2030));
+  const f2040 = Math.max(0, reg.predict(2040));
+
+  kpiValues[0].innerHTML = `${area2000.toFixed(2)} <small>km²</small>`;
+  kpiValues[1].innerHTML = `${area2025.toFixed(2)} <small>km²</small>`;
+  kpiValues[2].innerHTML = `${shrinkPct >= 0 ? '−' : '+'}${Math.abs(shrinkPct).toFixed(1)} <small>%</small>`;
+  kpiValues[3].innerHTML = `${annualLoss.toFixed(3)} <small>km²/yr</small>`;
+  kpiValues[4].innerHTML = `${f2030.toFixed(2)} <small>km²</small>`;
+  kpiValues[5].innerHTML = `${f2040.toFixed(2)} <small>km²</small>`;
+}
+
+function refreshChartsFromLiveData() {
+  reg = linearRegression(LAKE_DATA.years, LAKE_DATA.areas);
+
+  if (chartLakeArea) {
+    chartLakeArea.data.datasets[0].data = LAKE_DATA.areas;
+    chartLakeArea.update();
+  }
+  if (chartNDWI) {
+    chartNDWI.data.datasets[0].data = LAKE_DATA.ndwi;
+    chartNDWI.data.datasets[0].backgroundColor = LAKE_DATA.ndwi.map(v => v > 0.5
+      ? 'rgba(0,212,200,0.8)'
+      : v > 0.4
+        ? 'rgba(14,165,233,0.7)'
+        : 'rgba(239,68,68,0.7)');
+    chartNDWI.update();
+  }
+  if (chartRainfall) {
+    chartRainfall.data.datasets[0].data = LAKE_DATA.rainfall;
+    chartRainfall.data.datasets[1].data = LAKE_DATA.areas;
+    chartRainfall.update();
+  }
+  if (chartForecast) {
+    const forecastYears = [...LAKE_DATA.years, 2030, 2035, 2040];
+    chartForecast.data.labels = forecastYears;
+    chartForecast.data.datasets[0].data = [...LAKE_DATA.areas, null, null, null];
+    chartForecast.data.datasets[1].data = forecastYears.map(y => Number(reg.predict(y).toFixed(3)));
+    chartForecast.update();
+  }
+
+  updateForecastStats();
+  updateKpisFromLiveData();
+}
+
+function applyDerivedMetricsFromGeometry(dynamicData) {
+  const builtupFC = normalizePolygonFeatureCollection(dynamicData.builtup || GEOJSON_BUILTUP);
+  const metrics = {
+    lakeAreaKm2: polygonAreaKm2(firstPolygonRing(GEOJSON_LAKE)),
+    riverLengthKm: totalLineLengthKm(dynamicData.rivers || GEOJSON_RIVERS),
+    builtupAreaKm2: totalPolygonAreaKm2(builtupFC),
+  };
+
+  const derived = deriveLiveSeries(metrics);
+  setSeriesInPlace(LAKE_DATA.areas, derived.areaSeries);
+  setSeriesInPlace(LAKE_DATA.ndwi, derived.ndwiSeries);
+  setSeriesInPlace(LAKE_DATA.rainfall, derived.rainfallSeries);
+
+  refreshChartsFromLiveData();
+}
+
 function getDistSqFromLakeCenter(coords) {
   const centroid = getCoordsCentroid(coords);
   if (!centroid) return Infinity;
@@ -514,6 +676,46 @@ function updateLayerData(layer, featureCollection, shouldNormalizePolygon = fals
   const normalized = shouldNormalizePolygon ? normalizePolygonFeatureCollection(safeFC) : safeFC;
   layer.clearLayers();
   layer.addData(normalized);
+}
+
+function formatProvenanceTimestamp(timestampMs) {
+  if (!timestampMs) return 'Not fetched yet';
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return 'Invalid time';
+  return date.toLocaleString([], {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function provenanceClass(source) {
+  const normalized = String(source || '').toLowerCase();
+  if (normalized.includes('live fetch')) return 'is-live';
+  if (normalized.includes('cache')) return 'is-cache';
+  if (normalized.includes('fallback')) return 'is-fallback';
+  return 'is-snapshot';
+}
+
+function renderChartProvenanceBadges() {
+  document.querySelectorAll('.chart-card').forEach((card) => {
+    let badge = card.querySelector('.chart-provenance-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'chart-provenance-badge';
+      const canvas = card.querySelector('canvas');
+      if (canvas) card.insertBefore(badge, canvas);
+      else card.appendChild(badge);
+    }
+
+    badge.classList.remove('is-live', 'is-cache', 'is-fallback', 'is-snapshot');
+    badge.classList.add(provenanceClass(chartProvenanceState.source));
+    badge.textContent = `Data: ${chartProvenanceState.source} | Updated: ${formatProvenanceTimestamp(chartProvenanceState.updatedAt)}`;
+  });
+}
+
+function setChartProvenance(source, updatedAt = Date.now()) {
+  chartProvenanceState.source = source;
+  chartProvenanceState.updatedAt = updatedAt;
+  renderChartProvenanceBadges();
 }
 
 function readDynamicCache() {
@@ -673,12 +875,16 @@ function applyDynamicOsmLayers(dynamicData) {
   if (dynamicData.rivers) updateLayerData(layerRivers, dynamicData.rivers);
   if (dynamicData.builtup) updateLayerData(layerBuiltup, dynamicData.builtup, true);
   if (dynamicData.roads) updateLayerData(layerRoads, dynamicData.roads);
+  applyDerivedMetricsFromGeometry(dynamicData);
 }
 
 async function initDynamicOsmLayers() {
+  setChartProvenance('Snapshot', null);
+
   const cached = readDynamicCache();
   if (cached && (Date.now() - cached.savedAt) < DYNAMIC_OSM_CACHE_TTL_MS) {
     applyDynamicOsmLayers(cached.data);
+    setChartProvenance('Live cache', cached.savedAt);
   }
 
   try {
@@ -686,14 +892,14 @@ async function initDynamicOsmLayers() {
     if (Object.keys(dynamicData).length > 0) {
       applyDynamicOsmLayers(dynamicData);
       writeDynamicCache(dynamicData);
+      setChartProvenance('Live fetch', Date.now());
       console.info('Live OSM layer data refreshed');
     }
   } catch (err) {
+    if (!cached) setChartProvenance('Snapshot fallback', Date.now());
     console.warn('Live OSM refresh failed; using bundled snapshot/fallback data.', err);
   }
 }
-
-initDynamicOsmLayers();
 
 // ─────────────────────────────────────────────────────────
 // 6. LAYER TOGGLE CONTROLS
@@ -762,7 +968,7 @@ document.getElementById('btnCenter').addEventListener('click', () => {
 // ─────────────────────────────────────────────────────────
 
 const YEAR_LIST   = [2000, 2005, 2010, 2015, 2020, 2025];
-const YEAR_AREAS  = [3.20, 2.98, 2.71, 2.44, 2.10, 1.84];
+const YEAR_AREAS  = LAKE_DATA.areas;
 
 // Simulated lake boundaries (scale lake polygon by year index for demo)
 function getLakeBoundaryForYear(yearIdx) {
@@ -1293,7 +1499,7 @@ const commonOptions = {
 // 17. CHART 1 — LAKE AREA TREND
 // ─────────────────────────────────────────────────────────
 
-new Chart(document.getElementById('chartLakeArea'), {
+chartLakeArea = new Chart(document.getElementById('chartLakeArea'), {
   type: 'line',
   data: {
     labels: LAKE_DATA.years,
@@ -1329,7 +1535,7 @@ new Chart(document.getElementById('chartLakeArea'), {
 // 18. CHART 2 — NDWI VARIATION
 // ─────────────────────────────────────────────────────────
 
-new Chart(document.getElementById('chartNDWI'), {
+chartNDWI = new Chart(document.getElementById('chartNDWI'), {
   type: 'bar',
   data: {
     labels: LAKE_DATA.years,
@@ -1362,7 +1568,7 @@ new Chart(document.getElementById('chartNDWI'), {
 // 19. CHART 3 — RAINFALL vs LAKE AREA (dual axis)
 // ─────────────────────────────────────────────────────────
 
-new Chart(document.getElementById('chartRainfall'), {
+chartRainfall = new Chart(document.getElementById('chartRainfall'), {
   type: 'line',
   data: {
     labels: LAKE_DATA.years,
@@ -1434,7 +1640,7 @@ function linearRegression(xs, ys) {
   return { m, b, r2, predict: x => m * x + b };
 }
 
-const reg = linearRegression(LAKE_DATA.years, LAKE_DATA.areas);
+let reg = linearRegression(LAKE_DATA.years, LAKE_DATA.areas);
 
 function updateForecastStats() {
   const f2030 = Math.max(0, reg.predict(2030)).toFixed(2);
@@ -1474,7 +1680,7 @@ const forecastYears    = [...LAKE_DATA.years, 2030, 2035, 2040];
 const forecastActual   = [...LAKE_DATA.areas, null, null, null];
 const forecastLine     = forecastYears.map(y => parseFloat(reg.predict(y).toFixed(3)));
 
-new Chart(document.getElementById('chartForecast'), {
+chartForecast = new Chart(document.getElementById('chartForecast'), {
   type: 'line',
   data: {
     labels: forecastYears,
@@ -1674,6 +1880,7 @@ setTimeout(() => {
 // ─────────────────────────────────────────────────────────
 
 // Render default panel (spatiotemporal)
+initDynamicOsmLayers();
 renderPanel('spatiotemporal');
 updateForecastStats();
 updateLegend('spatiotemporal');

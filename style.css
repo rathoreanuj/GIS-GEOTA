@@ -708,6 +708,41 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   flex-shrink: 0;
 }
 
+.chart-provenance-badge {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: rgba(26, 37, 64, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chart-provenance-badge.is-live {
+  border-color: rgba(34, 197, 94, 0.45);
+  color: #86efac;
+}
+
+.chart-provenance-badge.is-cache {
+  border-color: rgba(14, 165, 233, 0.45);
+  color: #7dd3fc;
+}
+
+.chart-provenance-badge.is-fallback {
+  border-color: rgba(240, 165, 0, 0.45);
+  color: #fcd34d;
+}
+
+.chart-provenance-badge.is-snapshot {
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #cbd5e1;
+}
+
 /* ──────────────────────────────────────
    MODALS
 ────────────────────────────────────── */
