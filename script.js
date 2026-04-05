@@ -78,9 +78,37 @@ function scalePolygonRing(coords, centerLatLng, scaleFactor) {
   ]);
 }
 
+function normalizePolygonFeatureCollection(featureCollection) {
+  if (!featureCollection?.features) return featureCollection;
+  const normalizedFeatures = featureCollection.features.map((feature) => {
+    const geometry = feature?.geometry;
+    if (!geometry || geometry.type !== 'Polygon' || !Array.isArray(geometry.coordinates) || !geometry.coordinates.length) {
+      return feature;
+    }
+
+    const first = geometry.coordinates[0];
+    const isOneLevelTooShallow = Array.isArray(first) && typeof first[0] === 'number' && typeof first[1] === 'number';
+    if (!isOneLevelTooShallow) return feature;
+
+    return {
+      ...feature,
+      geometry: {
+        ...geometry,
+        coordinates: [geometry.coordinates]
+      }
+    };
+  });
+
+  return {
+    ...featureCollection,
+    features: normalizedFeatures
+  };
+}
+
 const CURRENT_LAKE_RING = closeRing(getLakeOuterRing(GEOJSON_LAKE));
 const LAKE_CENTER = getBoundsCenter(CURRENT_LAKE_RING);
 const LAKE_BOUNDS = getLatLngBounds(CURRENT_LAKE_RING);
+const HAS_OSM_LAYER_DATA = typeof OSM_LAYER_DATA !== 'undefined';
 
 // Historical lake area data (km²) — based on published estimates
 const LAKE_DATA = {
@@ -146,7 +174,7 @@ const GEOJSON_LAKE_2000 = {
 };
 
 // Admin boundary (Hyderabad district clip)
-const GEOJSON_ADMIN = {
+const FALLBACK_GEOJSON_ADMIN = {
   type: "FeatureCollection",
   features: [{
     type: "Feature",
@@ -162,6 +190,7 @@ const GEOJSON_ADMIN = {
     }
   }]
 };
+const GEOJSON_ADMIN = HAS_OSM_LAYER_DATA ? OSM_LAYER_DATA.OSM_ADMIN_BOUNDARY : FALLBACK_GEOJSON_ADMIN;
 
 // Watershed polygon
 const GEOJSON_WATERSHED = {
@@ -182,7 +211,7 @@ const GEOJSON_WATERSHED = {
 };
 
 // Rivers (approximate tributaries)
-const GEOJSON_RIVERS = {
+const FALLBACK_GEOJSON_RIVERS = {
   type: "FeatureCollection",
   features: [
     {
@@ -207,6 +236,7 @@ const GEOJSON_RIVERS = {
     }
   ]
 };
+const GEOJSON_RIVERS = HAS_OSM_LAYER_DATA ? OSM_LAYER_DATA.OSM_RIVERS : FALLBACK_GEOJSON_RIVERS;
 
 // Buffer zones (concentric rings)
 const GEOJSON_BUFFERS = {
@@ -232,7 +262,7 @@ const GEOJSON_BUFFERS = {
 };
 
 // Built-up areas
-const GEOJSON_BUILTUP = {
+const FALLBACK_GEOJSON_BUILTUP = {
   type: "FeatureCollection",
   features: [
     {
@@ -257,9 +287,12 @@ const GEOJSON_BUILTUP = {
     }
   ]
 };
+const GEOJSON_BUILTUP = normalizePolygonFeatureCollection(
+  HAS_OSM_LAYER_DATA ? OSM_LAYER_DATA.OSM_BUILTUP : FALLBACK_GEOJSON_BUILTUP
+);
 
 // Roads (major roads around lake)
-const GEOJSON_ROADS = {
+const FALLBACK_GEOJSON_ROADS = {
   type: "FeatureCollection",
   features: [
     {
@@ -279,6 +312,7 @@ const GEOJSON_ROADS = {
     }
   ]
 };
+const GEOJSON_ROADS = HAS_OSM_LAYER_DATA ? OSM_LAYER_DATA.OSM_ROADS : FALLBACK_GEOJSON_ROADS;
 
 // ─────────────────────────────────────────────────────────
 // 3. BASEMAP TILE LAYERS
@@ -397,8 +431,8 @@ const layerBuiltup = makeLayer(
 const layerRoads = makeLayer(
   GEOJSON_ROADS,
   (feature) => ({
-    color: feature.properties.type === 'Primary' ? '#cbd5e1' : '#94a3b8',
-    weight: feature.properties.type === 'Primary' ? 2 : 1.2,
+    color: ['motorway', 'trunk', 'primary'].includes(String(feature.properties.type || '').toLowerCase()) ? '#cbd5e1' : '#94a3b8',
+    weight: ['motorway', 'trunk', 'primary'].includes(String(feature.properties.type || '').toLowerCase()) ? 2 : 1.2,
     opacity: 0.7
   }),
   p => `<b style="color:#94a3b8">${p.name}</b><br>Type: <b>${p.type}</b>`
@@ -418,6 +452,248 @@ const ALL_LAYERS = {
 // Add default-on layers
 layerLakeCurrent.addTo(map);
 layerAdmin.addTo(map);
+
+// ─────────────────────────────────────────────────────────
+// 5.5 DYNAMIC OSM LAYER REFRESH (runtime fetch + cache)
+// ─────────────────────────────────────────────────────────
+
+const DYNAMIC_OSM_CACHE_KEY = 'hs_dynamic_osm_layers_v1';
+const DYNAMIC_OSM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const OSM_BBOX = { south: 17.39, west: 78.44, north: 17.45, east: 78.51 };
+
+function getCoordsCentroid(coords) {
+  if (!Array.isArray(coords) || !coords.length) return null;
+  let sumLng = 0;
+  let sumLat = 0;
+  coords.forEach(([lng, lat]) => {
+    sumLng += lng;
+    sumLat += lat;
+  });
+  return [sumLng / coords.length, sumLat / coords.length];
+}
+
+function getDistSqFromLakeCenter(coords) {
+  const centroid = getCoordsCentroid(coords);
+  if (!centroid) return Infinity;
+  const [centerLat, centerLng] = LAKE_CENTER;
+  const dLng = centroid[0] - centerLng;
+  const dLat = centroid[1] - centerLat;
+  return dLng * dLng + dLat * dLat;
+}
+
+function closePolygonRing(coords) {
+  if (!coords.length) return coords;
+  const [fLng, fLat] = coords[0];
+  const [lLng, lLat] = coords[coords.length - 1];
+  if (fLng === lLng && fLat === lLat) return coords;
+  return [...coords, [fLng, fLat]];
+}
+
+function overpassWayToCoords(way) {
+  if (!way?.geometry || !Array.isArray(way.geometry)) return [];
+  return way.geometry
+    .map((p) => [Number(p.lon), Number(p.lat)])
+    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+}
+
+function mapLanduseDensity(landuse) {
+  if (landuse === 'industrial' || landuse === 'commercial') return 'High';
+  if (landuse === 'residential') return 'Medium';
+  return 'Low';
+}
+
+function normalizeToFeatureCollection(featureCollection) {
+  if (!featureCollection?.features) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  return { type: 'FeatureCollection', features: featureCollection.features };
+}
+
+function updateLayerData(layer, featureCollection, shouldNormalizePolygon = false) {
+  const safeFC = normalizeToFeatureCollection(featureCollection);
+  const normalized = shouldNormalizePolygon ? normalizePolygonFeatureCollection(safeFC) : safeFC;
+  layer.clearLayers();
+  layer.addData(normalized);
+}
+
+function readDynamicCache() {
+  try {
+    const raw = localStorage.getItem(DYNAMIC_OSM_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.savedAt || !parsed?.data) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeDynamicCache(data) {
+  try {
+    localStorage.setItem(DYNAMIC_OSM_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // Ignore storage quota or privacy mode errors.
+  }
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 25000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchOverpass(query) {
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.openstreetmap.fr/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+  const body = `data=${encodeURIComponent(query)}`;
+
+  for (const endpoint of endpoints) {
+    try {
+      return await fetchJsonWithTimeout(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        body
+      });
+    } catch {
+      // Try next endpoint.
+    }
+  }
+
+  throw new Error('All Overpass endpoints failed');
+}
+
+function buildLineFeatures(overpassJson, typeKey, distanceThresholdSq, defaultNamePrefix) {
+  const elements = overpassJson?.elements || [];
+  return elements
+    .filter((el) => el.type === 'way' && Array.isArray(el.geometry))
+    .map((way) => {
+      const coords = overpassWayToCoords(way);
+      if (coords.length < 2) return null;
+      if (getDistSqFromLakeCenter(coords) > distanceThresholdSq) return null;
+      const tags = way.tags || {};
+      return {
+        type: 'Feature',
+        properties: {
+          name: tags.name || `${defaultNamePrefix} ${way.id}`,
+          [typeKey]: tags[typeKey] || tags.waterway || tags.highway || 'unknown',
+          osm_id: way.id
+        },
+        geometry: { type: 'LineString', coordinates: coords }
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPolygonFeatures(overpassJson, distanceThresholdSq) {
+  const elements = overpassJson?.elements || [];
+  return elements
+    .filter((el) => el.type === 'way' && Array.isArray(el.geometry))
+    .map((way) => {
+      const ring = closePolygonRing(overpassWayToCoords(way));
+      if (ring.length < 4) return null;
+      if (getDistSqFromLakeCenter(ring) > distanceThresholdSq) return null;
+      const tags = way.tags || {};
+      return {
+        type: 'Feature',
+        properties: {
+          name: tags.name || `Landuse ${way.id}`,
+          density: mapLanduseDensity(tags.landuse),
+          landuse: tags.landuse || 'unknown',
+          osm_id: way.id
+        },
+        geometry: { type: 'Polygon', coordinates: [ring] }
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildAdminFeatureCollection(nominatimResult) {
+  const geojson = nominatimResult?.[0]?.geojson;
+  if (!geojson) return null;
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: { name: 'Khairatabad Mandal (OSM live)', source: 'OpenStreetMap Nominatim' },
+      geometry: geojson
+    }]
+  };
+}
+
+async function fetchDynamicOsmLayers() {
+  const bbox = `(${OSM_BBOX.south},${OSM_BBOX.west},${OSM_BBOX.north},${OSM_BBOX.east})`;
+  const roadsQuery = `[out:json][timeout:60];way["highway"~"motorway|trunk|primary|secondary|tertiary"]${bbox};out geom;`;
+  const riversQuery = `[out:json][timeout:60];way["waterway"~"river|stream|canal|drain|ditch"]${bbox};out geom;`;
+  const builtupQuery = `[out:json][timeout:60];way["landuse"~"residential|commercial|industrial"]${bbox};out geom;`;
+  const adminUrl = 'https://nominatim.openstreetmap.org/search?q=Khairatabad%20mandal%20Hyderabad&format=jsonv2&polygon_geojson=1&limit=1';
+
+  const [roadsRaw, riversRaw, builtupRaw, adminRaw] = await Promise.allSettled([
+    fetchOverpass(roadsQuery),
+    fetchOverpass(riversQuery),
+    fetchOverpass(builtupQuery),
+    fetchJsonWithTimeout(adminUrl, { headers: { Accept: 'application/json' } }, 25000)
+  ]);
+
+  const dynamicData = {};
+
+  if (roadsRaw.status === 'fulfilled') {
+    const features = buildLineFeatures(roadsRaw.value, 'type', 0.0015, 'Road');
+    dynamicData.roads = { type: 'FeatureCollection', features: features.slice(0, 120) };
+  }
+
+  if (riversRaw.status === 'fulfilled') {
+    const features = buildLineFeatures(riversRaw.value, 'order', 0.0020, 'Waterway');
+    dynamicData.rivers = { type: 'FeatureCollection', features: features.slice(0, 80) };
+  }
+
+  if (builtupRaw.status === 'fulfilled') {
+    const features = buildPolygonFeatures(builtupRaw.value, 0.0018);
+    dynamicData.builtup = { type: 'FeatureCollection', features: features.slice(0, 80) };
+  }
+
+  if (adminRaw.status === 'fulfilled') {
+    const adminFC = buildAdminFeatureCollection(adminRaw.value);
+    if (adminFC) dynamicData.admin = adminFC;
+  }
+
+  return dynamicData;
+}
+
+function applyDynamicOsmLayers(dynamicData) {
+  if (dynamicData.admin) updateLayerData(layerAdmin, dynamicData.admin);
+  if (dynamicData.rivers) updateLayerData(layerRivers, dynamicData.rivers);
+  if (dynamicData.builtup) updateLayerData(layerBuiltup, dynamicData.builtup, true);
+  if (dynamicData.roads) updateLayerData(layerRoads, dynamicData.roads);
+}
+
+async function initDynamicOsmLayers() {
+  const cached = readDynamicCache();
+  if (cached && (Date.now() - cached.savedAt) < DYNAMIC_OSM_CACHE_TTL_MS) {
+    applyDynamicOsmLayers(cached.data);
+  }
+
+  try {
+    const dynamicData = await fetchDynamicOsmLayers();
+    if (Object.keys(dynamicData).length > 0) {
+      applyDynamicOsmLayers(dynamicData);
+      writeDynamicCache(dynamicData);
+      console.info('Live OSM layer data refreshed');
+    }
+  } catch (err) {
+    console.warn('Live OSM refresh failed; using bundled snapshot/fallback data.', err);
+  }
+}
+
+initDynamicOsmLayers();
 
 // ─────────────────────────────────────────────────────────
 // 6. LAYER TOGGLE CONTROLS
