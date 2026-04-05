@@ -7,7 +7,67 @@
 // 1. MOCK DATA (replace with real GeoJSON when available)
 // ─────────────────────────────────────────────────────────
 
-const LAKE_CENTER = [17.4485, 78.4647];
+const FALLBACK_GEOJSON_LAKE = {
+  type: "FeatureCollection",
+  features: [{
+    type: "Feature",
+    properties: { name: "Hussain Sagar Lake", area_km2: 1.84, year: 2025 },
+    geometry: {
+      type: "Polygon",
+      coordinates: [[
+        [78.4687, 17.4189],[78.4703, 17.4178],[78.4725, 17.4172],
+        [78.4751, 17.4174],[78.4770, 17.4187],[78.4779, 17.4209],
+        [78.4778, 17.4237],[78.4769, 17.4262],[78.4752, 17.4284],
+        [78.4729, 17.4294],[78.4706, 17.4290],[78.4691, 17.4274],
+        [78.4682, 17.4248],[78.4682, 17.4219],[78.4687, 17.4189]
+      ]]
+    }
+  }]
+};
+
+const GEOJSON_LAKE = typeof HUSSAIN_SAGAR_BOUNDARY !== 'undefined'
+  ? HUSSAIN_SAGAR_BOUNDARY
+  : FALLBACK_GEOJSON_LAKE;
+
+function getLakeOuterRing(featureCollection) {
+  const geometry = featureCollection?.features?.[0]?.geometry;
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return geometry.coordinates[0] || [];
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates?.[0]?.[0] || [];
+  return [];
+}
+
+function getBoundsCenter(coords) {
+  if (!coords.length) return [17.4239, 78.4738];
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  coords.forEach(([lng, lat]) => {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  });
+  return [(minLat + maxLat) / 2, (minLng + maxLng) / 2];
+}
+
+function closeRing(coords) {
+  if (!coords.length) return [];
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) return coords;
+  return [...coords, [first[0], first[1]]];
+}
+
+function scalePolygonRing(coords, centerLatLng, scaleFactor) {
+  const [centerLat, centerLng] = centerLatLng;
+  const closed = closeRing(coords);
+  return closed.map(([lng, lat]) => [
+    centerLng + (lng - centerLng) * scaleFactor,
+    centerLat + (lat - centerLat) * scaleFactor
+  ]);
+}
+
+const CURRENT_LAKE_RING = closeRing(getLakeOuterRing(GEOJSON_LAKE));
+const LAKE_CENTER = getBoundsCenter(CURRENT_LAKE_RING);
 
 // Historical lake area data (km²) — based on published estimates
 const LAKE_DATA = {
@@ -58,26 +118,8 @@ const HYDRO_DATA = {
 // 2. MOCK GeoJSON GEOMETRIES (approximate Hussain Sagar)
 // ─────────────────────────────────────────────────────────
 
-// Lake boundary polygon (approximate)
-const GEOJSON_LAKE = {
-  type: "FeatureCollection",
-  features: [{
-    type: "Feature",
-    properties: { name: "Hussain Sagar Lake", area_km2: 1.84, year: 2025 },
-    geometry: {
-      type: "Polygon",
-      coordinates: [[
-        [78.4530, 17.4430],[78.4570, 17.4390],[78.4630, 17.4370],
-        [78.4700, 17.4380],[78.4740, 17.4420],[78.4750, 17.4470],
-        [78.4730, 17.4520],[78.4690, 17.4560],[78.4640, 17.4580],
-        [78.4580, 17.4570],[78.4540, 17.4540],[78.4520, 17.4500],
-        [78.4530, 17.4430]
-      ]]
-    }
-  }]
-};
-
-// Lake boundary 2000 (larger extent)
+// Lake boundary 2000 (derived from current boundary using area ratio)
+const LAKE_2000_SCALE_FACTOR = Math.sqrt(3.20 / 1.84);
 const GEOJSON_LAKE_2000 = {
   type: "FeatureCollection",
   features: [{
@@ -85,13 +127,7 @@ const GEOJSON_LAKE_2000 = {
     properties: { name: "Hussain Sagar (2000)", area_km2: 3.20 },
     geometry: {
       type: "Polygon",
-      coordinates: [[
-        [78.4500, 17.4400],[78.4550, 17.4350],[78.4620, 17.4330],
-        [78.4710, 17.4340],[78.4760, 17.4390],[78.4780, 17.4450],
-        [78.4760, 17.4520],[78.4720, 17.4570],[78.4660, 17.4600],
-        [78.4590, 17.4590],[78.4540, 17.4560],[78.4510, 17.4520],
-        [78.4500, 17.4400]
-      ]]
+      coordinates: [scalePolygonRing(CURRENT_LAKE_RING, LAKE_CENTER, LAKE_2000_SCALE_FACTOR)]
     }
   }]
 };
@@ -437,10 +473,7 @@ const YEAR_AREAS  = [3.20, 2.98, 2.71, 2.44, 2.10, 1.84];
 
 // Simulated lake boundaries (scale lake polygon by year index for demo)
 function getLakeBoundaryForYear(yearIdx) {
-  // Interpolate between 2000 and 2025 polygon by shrinking
-  const scale = 0.85 + (yearIdx / (YEAR_LIST.length - 1)) * 0.15; // 1.0 → 0.85
-  const factor = 1 - (yearIdx / (YEAR_LIST.length - 1)) * 0.25;    // shrink factor
-  const center = [78.4640, 17.4475];
+  // Interpolate between 2000 envelope and current real boundary
   const coords2025 = GEOJSON_LAKE.features[0].geometry.coordinates[0];
   const coords2000 = GEOJSON_LAKE_2000.features[0].geometry.coordinates[0];
 
