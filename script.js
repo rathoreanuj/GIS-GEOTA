@@ -150,11 +150,14 @@ const GEOJSON_ADMIN = {
   type: "FeatureCollection",
   features: [{
     type: "Feature",
-    properties: { name: "Hyderabad Urban Zone" },
+    properties: { name: "Hussain Sagar Urban Management Zone" },
     geometry: {
       type: "Polygon",
       coordinates: [[
-        [78.40, 17.40],[78.52, 17.40],[78.52, 17.50],[78.40, 17.50],[78.40, 17.40]
+        [78.4550, 17.4090],[78.4680, 17.4060],[78.4850, 17.4090],
+        [78.4940, 17.4180],[78.4950, 17.4310],[78.4880, 17.4400],
+        [78.4720, 17.4420],[78.4590, 17.4370],[78.4520, 17.4250],
+        [78.4550, 17.4090]
       ]]
     }
   }]
@@ -165,13 +168,14 @@ const GEOJSON_WATERSHED = {
   type: "FeatureCollection",
   features: [{
     type: "Feature",
-    properties: { name: "Hussain Sagar Watershed", area_km2: 147.2 },
+    properties: { name: "Hussain Sagar Local Watershed", area_km2: 147.2 },
     geometry: {
       type: "Polygon",
       coordinates: [[
-        [78.41, 17.41],[78.43, 17.38],[78.47, 17.36],[78.51, 17.38],
-        [78.53, 17.42],[78.52, 17.47],[78.50, 17.52],[78.46, 17.54],
-        [78.42, 17.53],[78.40, 17.49],[78.41, 17.41]
+        [78.4470, 17.4010],[78.4630, 17.3960],[78.4860, 17.3990],
+        [78.5010, 17.4120],[78.5040, 17.4320],[78.4950, 17.4480],
+        [78.4750, 17.4550],[78.4560, 17.4500],[78.4430, 17.4340],
+        [78.4420, 17.4140],[78.4470, 17.4010]
       ]]
     }
   }]
@@ -183,23 +187,23 @@ const GEOJSON_RIVERS = {
   features: [
     {
       type: "Feature",
-      properties: { name: "Musi River Inflow", order: 2 },
-      geometry: { type: "LineString", coordinates: [[78.43, 17.43],[78.45, 17.44],[78.455, 17.448]] }
+      properties: { name: "Balkapur Nala Inflow", order: 2 },
+      geometry: { type: "LineString", coordinates: [[78.4520, 17.4220],[78.4580, 17.4225],[78.4630, 17.4230]] }
     },
     {
       type: "Feature",
-      properties: { name: "Northern Drain", order: 1 },
-      geometry: { type: "LineString", coordinates: [[78.46, 17.50],[78.461, 17.493],[78.462, 17.480]] }
+      properties: { name: "Kukatpally Drain Arm", order: 1 },
+      geometry: { type: "LineString", coordinates: [[78.4630, 17.4410],[78.4670, 17.4360],[78.4700, 17.4310],[78.4720, 17.4280]] }
     },
     {
       type: "Feature",
-      properties: { name: "Eastern Channel", order: 1 },
-      geometry: { type: "LineString", coordinates: [[78.50, 17.46],[78.490, 17.457],[78.477, 17.455]] }
+      properties: { name: "Picket Nala Inflow", order: 1 },
+      geometry: { type: "LineString", coordinates: [[78.4860, 17.4380],[78.4820, 17.4330],[78.4780, 17.4290],[78.4760, 17.4260]] }
     },
     {
       type: "Feature",
-      properties: { name: "Southern Nala", order: 1 },
-      geometry: { type: "LineString", coordinates: [[78.46, 17.40],[78.461, 17.415],[78.462, 17.432]] }
+      properties: { name: "Outflow Channel", order: 1 },
+      geometry: { type: "LineString", coordinates: [[78.4770, 17.4210],[78.4810, 17.4190],[78.4860, 17.4170]] }
     }
   ]
 };
@@ -213,12 +217,7 @@ const GEOJSON_BUFFERS = {
       properties: { zone: "500m buffer", ring: 1 },
       geometry: {
         type: "Polygon",
-        coordinates: [[
-          [78.4480, 17.4380],[78.4560, 17.4340],[78.4650, 17.4330],
-          [78.4760, 17.4380],[78.4810, 17.4460],[78.4790, 17.4560],
-          [78.4720, 17.4620],[78.4630, 17.4640],[78.4540, 17.4610],
-          [78.4480, 17.4570],[78.4460, 17.4500],[78.4480, 17.4380]
-        ]]
+        coordinates: [scalePolygonRing(CURRENT_LAKE_RING, LAKE_CENTER, 1.16)]
       }
     },
     {
@@ -226,12 +225,7 @@ const GEOJSON_BUFFERS = {
       properties: { zone: "1km buffer", ring: 2 },
       geometry: {
         type: "Polygon",
-        coordinates: [[
-          [78.4440, 17.4340],[78.4550, 17.4290],[78.4660, 17.4280],
-          [78.4800, 17.4330],[78.4860, 17.4440],[78.4840, 17.4580],
-          [78.4760, 17.4660],[78.4630, 17.4690],[78.4500, 17.4650],
-          [78.4430, 17.4590],[78.4410, 17.4490],[78.4440, 17.4340]
-        ]]
+        coordinates: [scalePolygonRing(CURRENT_LAKE_RING, LAKE_CENTER, 1.32)]
       }
     }
   ]
@@ -243,23 +237,23 @@ const GEOJSON_BUILTUP = {
   features: [
     {
       type: "Feature",
-      properties: { name: "Banjara Hills", density: "High" },
-      geometry: { type: "Polygon", coordinates: [[[78.4480,17.4280],[78.4560,17.4280],[78.4560,17.4360],[78.4480,17.4360],[78.4480,17.4280]]] }
+      properties: { name: "Khairatabad Belt", density: "High" },
+      geometry: { type: "Polygon", coordinates: [[[78.4650,17.4120],[78.4705,17.4120],[78.4705,17.4180],[78.4650,17.4180],[78.4650,17.4120]]] }
     },
     {
       type: "Feature",
-      properties: { name: "Panjagutta", density: "High" },
-      geometry: { type: "Polygon", coordinates: [[[78.4560,17.4290],[78.4650,17.4290],[78.4650,17.4340],[78.4560,17.4340],[78.4560,17.4290]]] }
+      properties: { name: "Somajiguda Urban Core", density: "High" },
+      geometry: { type: "Polygon", coordinates: [[[78.4650,17.4300],[78.4710,17.4300],[78.4710,17.4355],[78.4650,17.4355],[78.4650,17.4300]]] }
     },
     {
       type: "Feature",
-      properties: { name: "Begumpet", density: "Medium" },
-      geometry: { type: "Polygon", coordinates: [[[78.4680,17.4560],[78.4770,17.4560],[78.4770,17.4630],[78.4680,17.4630],[78.4680,17.4560]]] }
+      properties: { name: "Begumpet Edge", density: "Medium" },
+      geometry: { type: "Polygon", coordinates: [[[78.4715,17.4345],[78.4785,17.4345],[78.4785,17.4398],[78.4715,17.4398],[78.4715,17.4345]]] }
     },
     {
       type: "Feature",
-      properties: { name: "Secunderabad", density: "High" },
-      geometry: { type: "Polygon", coordinates: [[[78.4780,17.4480],[78.4860,17.4480],[78.4860,17.4570],[78.4780,17.4570],[78.4780,17.4480]]] }
+      properties: { name: "Secunderabad South", density: "High" },
+      geometry: { type: "Polygon", coordinates: [[[78.4790,17.4250],[78.4865,17.4250],[78.4865,17.4320],[78.4790,17.4320],[78.4790,17.4250]]] }
     }
   ]
 };
@@ -271,17 +265,17 @@ const GEOJSON_ROADS = {
     {
       type: "Feature",
       properties: { name: "Tank Bund Road", type: "Primary" },
-      geometry: { type: "LineString", coordinates: [[78.4530,17.4490],[78.4600,17.4490],[78.4650,17.4480],[78.4700,17.4460]] }
+      geometry: { type: "LineString", coordinates: [[78.4738,17.4296],[78.4760,17.4283],[78.4776,17.4261],[78.4780,17.4238]] }
     },
     {
       type: "Feature",
       properties: { name: "Necklace Road", type: "Primary" },
-      geometry: { type: "LineString", coordinates: [[78.4530,17.4430],[78.4560,17.4400],[78.4620,17.4380],[78.4690,17.4400]] }
+      geometry: { type: "LineString", coordinates: [[78.4686,17.4254],[78.4694,17.4228],[78.4705,17.4205],[78.4722,17.4187],[78.4746,17.4184]] }
     },
     {
       type: "Feature",
       properties: { name: "Raj Bhavan Road", type: "Secondary" },
-      geometry: { type: "LineString", coordinates: [[78.4510,17.4490],[78.4510,17.4430],[78.4530,17.4380]] }
+      geometry: { type: "LineString", coordinates: [[78.4668,17.4270],[78.4682,17.4256],[78.4690,17.4234],[78.4695,17.4212]] }
     }
   ]
 };
