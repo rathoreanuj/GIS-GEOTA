@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Hussain Sagar — Spatio-Temporal Lake Analysis</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <!-- Leaflet Draw -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <!-- Main CSS -->
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     TOP NAV BAR
+════════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="logo-mark">HS</div>
+    <div class="topbar-title">
+      <span class="project-label">GEOSPATIAL ANALYSIS</span>
+      <span class="project-name">Hussain Sagar Lake</span>
+    </div>
+  </div>
+  <nav class="topbar-nav">
+    <a href="#" class="nav-link active" data-section="dashboard">Dashboard</a>
+    <a href="#" class="nav-link" data-section="analyses">Analyses</a>
+    <a href="#" class="nav-link" data-section="forecast">Forecast</a>
+    <a href="#" class="nav-link" data-section="about">About</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="status-dot"></span>
+    <span class="status-text">Live Demo</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     MAIN LAYOUT: SIDEBAR + MAP + PANELS
+════════════════════════════════════════════ -->
+<main class="app-layout">
+
+  <!-- ─── LEFT SIDEBAR ─── -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Sidebar Header -->
+    <div class="sidebar-header">
+      <h2 class="sidebar-title">Analysis Modules</h2>
+      <p class="sidebar-sub">Select an analysis to visualize</p>
+    </div>
+
+    <!-- Analysis Module Buttons -->
+    <div class="module-list">
+      <button class="module-btn active" data-analysis="spatiotemporal">
+        <span class="module-icon">🛰</span>
+        <span class="module-info">
+          <span class="module-name">Spatio-Temporal</span>
+          <span class="module-desc">Lake extent over time</span>
+        </span>
+        <span class="module-badge">2000–2025</span>
+      </button>
+      <button class="module-btn" data-analysis="ndwi">
+        <span class="module-icon">💧</span>
+        <span class="module-info">
+          <span class="module-name">NDWI Analysis</span>
+          <span class="module-desc">Water index spectral</span>
+        </span>
+        <span class="module-badge">Index</span>
+      </button>
+      <button class="module-btn" data-analysis="change">
+        <span class="module-icon">🔄</span>
+        <span class="module-info">
+          <span class="module-name">Change Detection</span>
+          <span class="module-desc">Before/After comparison</span>
+        </span>
+        <span class="module-badge">Δ Area</span>
+      </button>
+      <button class="module-btn" data-analysis="urban">
+        <span class="module-icon">🏙</span>
+        <span class="module-info">
+          <span class="module-name">Urban Impact</span>
+          <span class="module-desc">Night-light & built-up</span>
+        </span>
+        <span class="module-badge">NTL</span>
+      </button>
+      <button class="module-btn" data-analysis="lulc">
+        <span class="module-icon">🗺</span>
+        <span class="module-info">
+          <span class="module-name">LULC Analysis</span>
+          <span class="module-desc">Land cover classification</span>
+        </span>
+        <span class="module-badge">ESA</span>
+      </button>
+      <button class="module-btn" data-analysis="topo">
+        <span class="module-icon">⛰</span>
+        <span class="module-info">
+          <span class="module-name">Topographic</span>
+          <span class="module-desc">Slope, aspect, DEM</span>
+        </span>
+        <span class="module-badge">SRTM</span>
+      </button>
+      <button class="module-btn" data-analysis="hydro">
+        <span class="module-icon">🌊</span>
+        <span class="module-info">
+          <span class="module-name">Hydrological</span>
+          <span class="module-desc">Watershed & rivers</span>
+        </span>
+        <span class="module-badge">Flow</span>
+      </button>
+      <button class="module-btn" data-analysis="rainfall">
+        <span class="module-icon">🌧</span>
+        <span class="module-info">
+          <span class="module-name">Rainfall Correlation</span>
+          <span class="module-desc">Precipitation vs area</span>
+        </span>
+        <span class="module-badge">CHIRPS</span>
+      </button>
+      <button class="module-btn" data-analysis="buffer">
+        <span class="module-icon">📍</span>
+        <span class="module-info">
+          <span class="module-name">Buffer & Proximity</span>
+          <span class="module-desc">Impact zone analysis</span>
+        </span>
+        <span class="module-badge">500m</span>
+      </button>
+      <button class="module-btn" data-analysis="forecast">
+        <span class="module-icon">📈</span>
+        <span class="module-info">
+          <span class="module-name">Regression Forecast</span>
+          <span class="module-desc">Prediction 2030–2040</span>
+        </span>
+        <span class="module-badge">ML</span>
+      </button>
+    </div>
+
+    <!-- Layer Controls -->
+    <div class="layer-controls">
+      <div class="layer-controls-header">
+        <span>Layer Controls</span>
+        <button class="toggle-all-btn" id="toggleAllLayers">All Off</button>
+      </div>
+      <div class="layer-list" id="layerList">
+        <label class="layer-item">
+          <input type="checkbox" checked data-layer="lakeBoundary"/> Lake Boundary
+          <span class="layer-color" style="background:#00d4ff"></span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" checked data-layer="adminBoundary"/> Admin Boundary
+          <span class="layer-color" style="background:#ff9f43"></span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" data-layer="watershed"/> Watershed
+          <span class="layer-color" style="background:#48dbfb"></span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" data-layer="rivers"/> Rivers
+          <span class="layer-color" style="background:#0abde3"></span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" data-layer="bufferZones"/> Buffer Zones
+          <span class="layer-color" style="background:#ffd32a"></span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" data-layer="builtup"/> Built-up Areas
+          <span class="layer-color" style="background:#ff4757"></span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" data-layer="roads"/> Roads
+          <span class="layer-color" style="background:#a4b0be"></span>
+        </label>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ─── MAP + PANELS AREA ─── -->
+  <section class="content-area">
+
+    <!-- KPI Stats Strip -->
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <span class="kpi-label">Lake Area 2000</span>
+        <span class="kpi-value">3.20 <small>km²</small></span>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <span class="kpi-label">Lake Area 2025</span>
+        <span class="kpi-value">1.84 <small>km²</small></span>
+      </div>
+      <div class="kpi-card kpi-danger">
+        <span class="kpi-label">Total Shrinkage</span>
+        <span class="kpi-value">−42.5 <small>%</small></span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Avg Annual Loss</span>
+        <span class="kpi-value">−0.054 <small>km²/yr</small></span>
+      </div>
+      <div class="kpi-card kpi-info">
+        <span class="kpi-label">Forecast 2030</span>
+        <span class="kpi-value">1.57 <small>km²</small></span>
+      </div>
+      <div class="kpi-card kpi-danger">
+        <span class="kpi-label">Forecast 2040</span>
+        <span class="kpi-value">1.03 <small>km²</small></span>
+      </div>
+    </div>
+
+    <!-- Map + Analysis Row -->
+    <div class="map-analysis-row">
+
+      <!-- MAP -->
+      <div class="map-wrapper">
+        <!-- Map toolbar -->
+        <div class="map-toolbar">
+          <div class="basemap-toggle">
+            <button class="bm-btn active" data-basemap="dark">Dark</button>
+            <button class="bm-btn" data-basemap="satellite">Satellite</button>
+            <button class="bm-btn" data-basemap="street">Street</button>
+          </div>
+          <div class="map-toolbar-right">
+            <button class="tool-btn" id="btnZoomIn" title="Zoom in">+</button>
+            <button class="tool-btn" id="btnZoomOut" title="Zoom out">−</button>
+            <button class="tool-btn" id="btnCenter" title="Reset view">⌖</button>
+          </div>
+        </div>
+        <div id="map"></div>
+        <!-- Map Legend -->
+        <div class="map-legend" id="mapLegend">
+          <div class="legend-title">Legend</div>
+          <div id="legendContent"></div>
+        </div>
+        <!-- Year slider for temporal analysis -->
+        <div class="year-slider-panel" id="yearSliderPanel">
+          <span class="slider-label">Year</span>
+          <input type="range" min="0" max="5" value="0" step="1" id="yearSlider" class="year-slider"/>
+          <span class="slider-year" id="sliderYearLabel">2000</span>
+        </div>
+      </div>
+
+      <!-- ANALYSIS PANEL -->
+      <div class="analysis-panel" id="analysisPanel">
+        <!-- Filled dynamically by JS -->
+      </div>
+
+    </div>
+
+    <!-- CHARTS ROW -->
+    <div class="charts-row">
+      <div class="chart-card" id="chartCard1">
+        <div class="chart-header">
+          <span class="chart-title">Lake Area Trend (2000–2025)</span>
+          <span class="chart-badge">Spatio-Temporal</span>
+        </div>
+        <canvas id="chartLakeArea" height="160"></canvas>
+      </div>
+      <div class="chart-card" id="chartCard2">
+        <div class="chart-header">
+          <span class="chart-title">NDWI Variation</span>
+          <span class="chart-badge">Spectral Index</span>
+        </div>
+        <canvas id="chartNDWI" height="160"></canvas>
+      </div>
+      <div class="chart-card" id="chartCard3">
+        <div class="chart-header">
+          <span class="chart-title">Rainfall vs Lake Area</span>
+          <span class="chart-badge">Correlation</span>
+        </div>
+        <canvas id="chartRainfall" height="160"></canvas>
+      </div>
+      <div class="chart-card" id="chartCard4">
+        <div class="chart-header">
+          <span class="chart-title">Regression Forecast (2025–2040)</span>
+          <span class="chart-badge">Prediction</span>
+        </div>
+        <canvas id="chartForecast" height="160"></canvas>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<!-- ═══════════════════════════════════════════
+     FORECAST MODAL
+════════════════════════════════════════════ -->
+<div class="modal-overlay" id="forecastModal">
+  <div class="modal-box">
+    <button class="modal-close" id="modalClose">✕</button>
+    <h2 class="modal-title">Regression-Based Forecast</h2>
+    <p class="modal-sub">Linear regression model fitted to historical lake area data (2000–2025)</p>
+    <div class="regression-stats">
+      <div class="reg-stat"><span class="reg-label">Equation</span><span class="reg-val" id="regEq">y = mx + b</span></div>
+      <div class="reg-stat"><span class="reg-label">R² Score</span><span class="reg-val" id="regR2">—</span></div>
+      <div class="reg-stat"><span class="reg-label">Slope (m)</span><span class="reg-val" id="regSlope">—</span></div>
+      <div class="reg-stat"><span class="reg-label">2030 Estimate</span><span class="reg-val" id="reg2030">—</span></div>
+      <div class="reg-stat"><span class="reg-label">2040 Estimate</span><span class="reg-val" id="reg2040">—</span></div>
+    </div>
+    <canvas id="chartModalForecast" height="200"></canvas>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     ABOUT MODAL
+════════════════════════════════════════════ -->
+<div class="modal-overlay" id="aboutModal">
+  <div class="modal-box modal-box-wide">
+    <button class="modal-close" id="aboutModalClose">✕</button>
+    <h2 class="modal-title">About This Project</h2>
+    <div class="about-grid">
+      <div class="about-block">
+        <h3>Project Title</h3>
+        <p>Spatio-Temporal Analysis and Forecasting of Lake Shrinkage — Hussain Sagar, Hyderabad</p>
+      </div>
+      <div class="about-block">
+        <h3>Objective</h3>
+        <p>Analyze the historical shrinkage of Hussain Sagar Lake using multi-temporal remote sensing data and forecast future lake area using regression modelling.</p>
+      </div>
+      <div class="about-block">
+        <h3>Data Sources</h3>
+        <p>Landsat 5/8 (USGS), Sentinel-2 (Copernicus), SRTM DEM, CHIRPS Rainfall, VIIRS Night-Time Light, ESA WorldCover LULC</p>
+      </div>
+      <div class="about-block">
+        <h3>Tools & Stack</h3>
+        <p>Leaflet.js, Chart.js, HTML5/CSS3/JS — Spatial analyses via Google Earth Engine + Python (GeoPandas, Rasterio)</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
