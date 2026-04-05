@@ -49,6 +49,18 @@ function getBoundsCenter(coords) {
   return [(minLat + maxLat) / 2, (minLng + maxLng) / 2];
 }
 
+function getLatLngBounds(coords) {
+  if (!coords.length) return [[17.40, 78.44], [17.45, 78.50]];
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  coords.forEach(([lng, lat]) => {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  });
+  return [[minLat, minLng], [maxLat, maxLng]];
+}
+
 function closeRing(coords) {
   if (!coords.length) return [];
   const first = coords[0];
@@ -68,6 +80,7 @@ function scalePolygonRing(coords, centerLatLng, scaleFactor) {
 
 const CURRENT_LAKE_RING = closeRing(getLakeOuterRing(GEOJSON_LAKE));
 const LAKE_CENTER = getBoundsCenter(CURRENT_LAKE_RING);
+const LAKE_BOUNDS = getLatLngBounds(CURRENT_LAKE_RING);
 
 // Historical lake area data (km²) — based on published estimates
 const LAKE_DATA = {
@@ -307,6 +320,10 @@ const map = L.map('map', {
 BASEMAPS.dark.addTo(map);
 let currentBasemap = 'dark';
 
+if (CURRENT_LAKE_RING.length) {
+  map.fitBounds(LAKE_BOUNDS, { padding: [40, 40], maxZoom: 15 });
+}
+
 // Small attribution
 L.control.attribution({ position: 'bottomleft', prefix: false })
   .addAttribution('© CartoDB | Leaflet')
@@ -462,7 +479,13 @@ document.querySelectorAll('.bm-btn').forEach(btn => {
 
 document.getElementById('btnZoomIn').addEventListener('click', () => map.zoomIn());
 document.getElementById('btnZoomOut').addEventListener('click', () => map.zoomOut());
-document.getElementById('btnCenter').addEventListener('click', () => map.setView(LAKE_CENTER, 14));
+document.getElementById('btnCenter').addEventListener('click', () => {
+  if (CURRENT_LAKE_RING.length) {
+    map.fitBounds(LAKE_BOUNDS, { padding: [40, 40], maxZoom: 15 });
+    return;
+  }
+  map.setView(LAKE_CENTER, 14);
+});
 
 // ─────────────────────────────────────────────────────────
 // 9. YEAR SLIDER (Temporal Analysis)
