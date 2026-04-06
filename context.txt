@@ -1,0 +1,83 @@
+Project: Hussain Sagar GIS dashboard (Leaflet + Chart.js), in folder with index.html, script.js, style.css.
+
+Run setup
+
+It is a static frontend app.
+
+Run with Live Server or local server and open localhost.
+
+Major fixes completed
+
+Lake boundary alignment was corrected around Hussain Sagar.
+
+Real lake boundary was integrated from OSM into hussain-sagar-boundary.js.
+
+Map initial view and reset behavior were improved to fit real lake bounds in script.js.
+
+Layer misalignment (admin/watershed/rivers/buffers/built-up/roads) was corrected around Hussain Sagar.
+
+OSM data integration
+
+Created OSM snapshot module osm-layer-data.js.
+
+Wired OSM module loading in index.html.
+
+Layer sources in script.js:
+
+Lake Boundary uses OSM boundary file.
+Admin Boundary, Rivers, Built-up, Roads use OSM layer data with fallback.
+Watershed is still modeled (not authoritative shapefile yet).
+Buffers are derived from lake geometry.
+Added runtime guard to normalize malformed polygon nesting for built-up data.
+
+Dynamic runtime behavior added
+
+Added runtime live-fetch pipeline in script.js:
+
+Overpass + Nominatim fetch
+localStorage cache
+fallback to snapshot if fetch fails
+Dynamic live layer updates apply to:
+Admin Boundary
+Rivers
+Built-up
+Roads
+Charts and KPI behavior
+Dynamic geometry-derived chart pipeline was implemented.
+Then per request, visual stability was restored:
+Lake Area Trend, NDWI Variation, Regression Forecast are now kept static like before for better UI look.
+Rainfall vs Lake Area can still reflect derived adjustments.
+
+KPI cards and forecast stats update logic exists in script.js.
+
+Provenance badges
+
+Added chart provenance badges (snapshot/cache/live/fallback) in script.js and style.css.
+
+Then per request, the line-like badge under chart titles was hidden by setting the badge display to none in style.css.
+
+Contrast and readability update
+
+Low-contrast dark gray text was fixed globally by brightening theme tokens in style.css:
+
+text-muted
+text-label
+This improves readability in side panel stats, labels, and muted UI text.
+
+Current status
+
+No reported syntax/lint errors in edited files.
+
+UI is now readable, map aligns to Hussain Sagar, and key charts are visually stable.
+
+Dynamic map layer fetching is present, with cache and fallback.
+
+Watershed is the only major layer still not from an authoritative watershed dataset.
+
+If continuing next chat, likely next tasks
+
+Replace modeled watershed with official hydrology GeoJSON/shapefile.
+
+Optionally disable remaining dynamic chart transforms if fully static reporting is preferred.
+
+Add a visible but subtle provenance text elsewhere (not under chart title) if submission requires source traceability on screen.
